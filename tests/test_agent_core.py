@@ -41,8 +41,14 @@ def tools(repo: Repository) -> AgentTools:
 
 def _agent(tools: AgentTools, *replies: LLMReply | Exception) -> tuple[Agent, FakeProvider]:
     provider = FakeProvider(*replies)
-    agent = Agent(provider, tools, clock=lambda: FIXED_NOW)
+    agent = Agent(provider, tools, clock=lambda: FIXED_NOW, retry_wait=0)
     return agent, provider
+
+
+class FakeAuthError(Exception):
+    """Simula erro de autenticação dos SDKs (expõe status_code)."""
+
+    status_code = 401
 
 
 def test_resposta_direta_sem_ferramentas(tools: AgentTools) -> None:
@@ -127,6 +133,25 @@ def test_erro_persistente_devolve_mensagem_amigavel(tools: AgentTools) -> None:
     assert "atendente" in answer
     # A conversa não fica poluída com a falha: só a mensagem do usuário permanece.
     assert [m["role"] for m in agent.history] == ["user"]
+
+
+def test_erro_de_autenticacao_nao_e_retentado(tools: AgentTools) -> None:
+    """Achado #6: 401/403/404 são permanentes — repetir só multiplica requisições."""
+    agent, provider = _agent(tools, FakeAuthError("chave inválida"))
+    answer = agent.send("oi")
+    assert "atendente" in answer
+    assert len(provider.requests) == 1  # uma única tentativa
+
+
+def test_trace_de_ferramentas_e_limpo_apos_erro(tools: AgentTools) -> None:
+    """Achado #7: a CLI não pode exibir ferramentas de um turno que falhou."""
+    agent, _ = _agent(
+        tools,
+        LLMReply(text=None, tool_calls=(ToolCall("t1", "dados_da_loja", {}),)),
+        *[RuntimeError("caiu no meio")] * 3,
+    )
+    agent.send("oi")
+    assert agent.last_tool_calls == []
 
 
 def test_reset_limpa_a_conversa(tools: AgentTools) -> None:

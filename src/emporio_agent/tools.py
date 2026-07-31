@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 
 _TOPICOS_DESC = "; ".join(f"'{t}' ({d})" for t, (_, d) in TOPICS.items())
 
+
+def _as_bool(value: Any) -> bool:
+    """Coerção tolerante: modelos abertos às vezes mandam booleanos como string."""
+    if isinstance(value, str):
+        return value.strip().casefold() not in ("", "false", "0", "no", "nao", "não", "null")
+    return bool(value)
+
 TOOL_SPECS: list[dict[str, Any]] = [
     {
         "name": "buscar_produtos",
@@ -188,7 +195,10 @@ def _order_payload(order: Order) -> dict[str, Any]:
             {
                 "produto": item.product_name,
                 "quantidade": item.quantity,
-                "preco_unitario": format_brl(item.unit_price_brl),
+                # order_items não guarda preço histórico; expor como "preço atual"
+                # evita afirmar um valor que o cliente pode não ter pago (o total
+                # gravado do pedido é a fonte de verdade — docs/data_notes.md D6).
+                "preco_atual_catalogo": format_brl(item.unit_price_brl),
             }
             for item in order.items
         ],
@@ -213,6 +223,14 @@ class AgentTools:
         except (IdentityVerificationError, KeyError) as exc:
             message = str(exc.args[0]) if exc.args else str(exc)
             result = {"erro": message}
+        except (ValueError, TypeError) as exc:
+            # Argumento com tipo errado (ex.: numero_pedido="abc"): erro específico
+            # permite ao modelo pedir a informação de novo em vez de escalar.
+            logger.warning("Argumento inválido em %s: %r (%s)", name, arguments, exc)
+            result = {
+                "erro": "Argumento inválido: verifique os tipos (números devem ser"
+                " numéricos). Peça a informação novamente ao cliente se necessário."
+            }
         except Exception:
             logger.exception("Erro inesperado na ferramenta %s com args %r", name, arguments)
             result = {
@@ -229,7 +247,7 @@ class AgentTools:
                     category=args.get("categoria"),
                     max_price=args.get("preco_maximo"),
                     min_price=args.get("preco_minimo"),
-                    in_stock_only=bool(args.get("apenas_disponiveis") or False),
+                    in_stock_only=_as_bool(args.get("apenas_disponiveis")),
                     limit=int(args.get("limite") or 10),
                 )
                 return [_product_payload(p) for p in products]
@@ -253,8 +271,6 @@ class AgentTools:
                 order = self._repo.get_order_status(
                     int(args["numero_pedido"]), str(args["nome_cliente"])
                 )
-                if order is None:
-                    return {"erro": "Pedido não encontrado. Confira o número informado."}
                 return _order_payload(order)
             case "buscar_pedidos_por_cliente":
                 orders = self._repo.find_orders_by_customer(

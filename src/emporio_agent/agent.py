@@ -12,6 +12,7 @@ verificam (comportamento, não texto exato).
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -54,12 +55,14 @@ class Agent:
         system_prompt: str | None = None,
         max_tool_rounds: int = MAX_TOOL_ROUNDS,
         clock: Callable[[], datetime] = datetime.now,
+        retry_wait: float = 0.5,
     ) -> None:
         self._provider = provider
         self._tools = tools
         self._system_template = system_prompt or SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
         self._max_tool_rounds = max_tool_rounds
         self._clock = clock
+        self._retry_wait = retry_wait
         self._history: list[Message] = []
         self.last_tool_calls: list[ToolCall] = []
 
@@ -107,8 +110,11 @@ class Agent:
                         }
                     )
         except Exception:
-            logger.exception("Falha ao consultar o provedor de LLM")
-            # Mantém apenas a mensagem do usuário: a próxima tentativa recomeça limpa.
+            logger.exception("Falha ao processar a mensagem (provedor ou ferramenta)")
+            # Mantém apenas a mensagem do usuário e limpa o trace: a próxima
+            # tentativa recomeça limpa e a CLI não exibe ferramentas de um turno
+            # que falhou.
+            self.last_tool_calls = []
             return _FALLBACK_ERRO
 
         logger.warning("Limite de %d rodadas de ferramentas atingido", self._max_tool_rounds)
@@ -117,7 +123,12 @@ class Agent:
         return _FALLBACK_LIMITE
 
     def _complete_with_retry(self, messages: list[Message]):
-        """Chama o provedor, tentando de novo em falhas transitórias."""
+        """Chama o provedor, tentando de novo apenas em falhas transitórias.
+
+        Erros permanentes (autenticação/permissão/modelo inexistente — status
+        401/403/404 nos SDKs) não são retentados: repetir uma chamada idêntica
+        só multiplicaria requisições fadadas ao mesmo erro.
+        """
         last_error: Exception | None = None
         for attempt in range(1, PROVIDER_ATTEMPTS + 1):
             try:
@@ -127,9 +138,13 @@ class Agent:
                     tools=self._tools.specs,
                 )
             except Exception as exc:
+                if getattr(exc, "status_code", None) in (401, 403, 404):
+                    raise
                 last_error = exc
                 logger.warning(
                     "Falha no provedor (tentativa %d/%d): %s", attempt, PROVIDER_ATTEMPTS, exc
                 )
+                if attempt < PROVIDER_ATTEMPTS and self._retry_wait > 0:
+                    time.sleep(self._retry_wait * attempt)
         assert last_error is not None
         raise last_error

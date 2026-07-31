@@ -68,7 +68,39 @@ def test_consultar_pedido_ok(tools: AgentTools) -> None:
 
 def test_consultar_pedido_identidade_insuficiente(tools: AgentTools) -> None:
     result = _run(tools, "consultar_pedido", numero_pedido=1, nome_cliente="Pedro")
-    assert "erro" in result and "nome" in result["erro"].casefold()
+    assert "erro" in result
+
+
+def test_pedido_inexistente_e_nome_errado_mesma_resposta(tools: AgentTools) -> None:
+    """Achado #3: a resposta não pode revelar se o pedido existe."""
+    inexistente = _run(tools, "consultar_pedido", numero_pedido=999,
+                       nome_cliente="Pedro Henrique Oliveira")
+    nome_errado = _run(tools, "consultar_pedido", numero_pedido=1,
+                       nome_cliente="Lucas Mendes da Silva")
+    assert inexistente == nome_errado
+
+
+def test_argumento_nao_numerico_gera_erro_especifico(tools: AgentTools) -> None:
+    """Achado #5: 'abc' como número não pode virar 'falha interna'."""
+    result = _run(tools, "consultar_pedido", numero_pedido="abc", nome_cliente="Ana Silva")
+    assert "erro" in result
+    assert "interna" not in result["erro"].casefold()
+
+
+def test_apenas_disponiveis_como_string_false(tools: AgentTools) -> None:
+    """Achado #4: modelos abertos mandam booleanos como string."""
+    result = _run(tools, "buscar_produtos", termo="violão", preco_maximo=1000,
+                  apenas_disponiveis="false", limite=30)
+    assert 96 in {p["id"] for p in result}  # indisponível deve aparecer
+
+
+def test_itens_do_pedido_expoem_preco_atual_nao_historico(tools: AgentTools) -> None:
+    """Achado #2: a chave deixa claro que é preço de catálogo, não o pago."""
+    result = _run(tools, "consultar_pedido", numero_pedido=1,
+                  nome_cliente="Pedro Henrique Oliveira")
+    item = result["itens"][0]
+    assert "preco_atual_catalogo" in item
+    assert "preco_unitario" not in item
 
 
 def test_buscar_pedidos_sem_contato_valido(tools: AgentTools) -> None:
