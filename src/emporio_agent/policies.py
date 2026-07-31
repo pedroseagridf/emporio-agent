@@ -14,7 +14,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-DEFAULT_POLICIES_PATH = Path("data") / "policies.md"
+from emporio_agent.paths import DATA_DIR
+
+DEFAULT_POLICIES_PATH = DATA_DIR / "policies.md"
 
 #: tópico exposto ao agente -> (número da seção no manual, descrição curta)
 TOPICS: dict[str, tuple[str, str]] = {
@@ -55,11 +57,13 @@ class PolicyBook:
             valid = ", ".join(sorted(TOPICS))
             raise KeyError(f"Tópico desconhecido: {topic!r}. Tópicos válidos: {valid}.")
         section_number, _ = TOPICS[key]
-        return self._sections[section_number]
-
-    def topics(self) -> dict[str, str]:
-        """Tópicos disponíveis com descrição curta (usado na definição da ferramenta)."""
-        return {topic: description for topic, (_, description) in TOPICS.items()}
+        section = self._sections.get(section_number)
+        if section is None:
+            raise KeyError(
+                f"Seção {section_number} não encontrada no manual — o arquivo"
+                " policies.md pode ter sido renumerado. Avise a equipe técnica."
+            )
+        return section
 
 
 def get_store_info() -> dict[str, str]:

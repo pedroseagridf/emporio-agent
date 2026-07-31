@@ -60,6 +60,6 @@ def describe_order_status(status: str) -> str:
 def describe_payment(method: str) -> str:
     """Traduz o método de pagamento ('credit_6x' -> 'cartão de crédito em 6x')."""
     if method.startswith("credit_"):
-        installments = method.removeprefix("credit_")
-        return f"cartão de crédito em {installments}"
+        installments = method.removeprefix("credit_").rstrip("x")
+        return f"cartão de crédito em {installments}x"
     return _PAGAMENTOS.get(method, method)

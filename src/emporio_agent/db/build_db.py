@@ -19,11 +19,12 @@ import csv
 import sqlite3
 from pathlib import Path
 
+from emporio_agent.paths import DATA_DIR
 from emporio_agent.text_utils import normalize, only_digits
 
 CSV_PREFIX = "desafio_tecnico_ai_eng - "
-DEFAULT_DATA_DIR = Path("data")
-DEFAULT_DB_PATH = Path("data") / "emporio.sqlite3"
+DEFAULT_DATA_DIR = DATA_DIR
+DEFAULT_DB_PATH = DATA_DIR / "emporio.sqlite3"
 
 SCHEMA = """
 DROP TABLE IF EXISTS order_items;

@@ -38,6 +38,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 markers = [
     "llm: testes que chamam a API do modelo (pulados sem chave configurada)",
 ]

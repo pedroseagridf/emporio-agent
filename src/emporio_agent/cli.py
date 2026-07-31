@@ -31,14 +31,15 @@ AJUDA = """[bold]Comandos:[/]
 DESPEDIDA = "Até logo! Sua música começa aqui. 🎶"
 
 
-def _bootstrap(console: Console) -> tuple[Agent, Settings]:
+def _bootstrap(console: Console) -> tuple[Agent, Settings, Repository]:
     """Carrega configuração, garante a base construída e monta o agente."""
     settings = load_settings()
     if not DEFAULT_DB_PATH.exists():
         console.print("[dim]Base de dados ainda não existe — construindo a partir dos CSVs…[/]")
         build(db_path=DEFAULT_DB_PATH)
-    tools = AgentTools(Repository(DEFAULT_DB_PATH), PolicyBook())
-    return Agent(create_provider(settings), tools), settings
+    repository = Repository(DEFAULT_DB_PATH)
+    tools = AgentTools(repository, PolicyBook())
+    return Agent(create_provider(settings), tools), settings, repository
 
 
 def main() -> None:
@@ -46,7 +47,7 @@ def main() -> None:
     console.print(Panel(BANNER, border_style="magenta", expand=False))
 
     try:
-        agent, settings = _bootstrap(console)
+        agent, settings, repository = _bootstrap(console)
     except (ConfigError, FileNotFoundError) as exc:
         console.print(f"[bold red]Erro de configuração:[/] {exc}")
         raise SystemExit(1) from exc
@@ -55,6 +56,13 @@ def main() -> None:
     console.print(AJUDA)
     console.print()
 
+    try:
+        _chat_loop(console, agent)
+    finally:
+        repository.close()
+
+
+def _chat_loop(console: Console, agent: Agent) -> None:
     while True:
         try:
             text = console.input("[bold cyan]você ›[/] ").strip()
