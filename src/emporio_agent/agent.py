@@ -26,6 +26,11 @@ SYSTEM_PROMPT_PATH = Path(__file__).parent / "prompts" / "system.md"
 
 MAX_TOOL_ROUNDS = 8
 
+#: Tentativas por chamada ao provedor. Modelos abertos ocasionalmente geram a
+#: sintaxe da chamada de ferramenta malformada (erro 400 "tool_use_failed" na
+#: Groq); uma nova amostragem costuma resolver.
+PROVIDER_ATTEMPTS = 3
+
 _FALLBACK_LIMITE = (
     "Puxa, essa consulta ficou mais complexa do que o esperado e não consegui"
     " concluir por aqui. 🙏 Pode reformular a pergunta, ou se preferir eu encaminho"
@@ -80,11 +85,7 @@ class Agent:
 
         try:
             for _ in range(self._max_tool_rounds):
-                reply = self._provider.complete(
-                    system=self._system_prompt(),
-                    messages=self._history + pending,
-                    tools=self._tools.specs,
-                )
+                reply = self._complete_with_retry(self._history + pending)
                 if not reply.tool_calls:
                     self._history.extend(pending)
                     self._history.append({"role": "assistant", "content": reply.text or ""})
@@ -114,3 +115,21 @@ class Agent:
         self._history.extend(pending)
         self._history.append({"role": "assistant", "content": _FALLBACK_LIMITE})
         return _FALLBACK_LIMITE
+
+    def _complete_with_retry(self, messages: list[Message]):
+        """Chama o provedor, tentando de novo em falhas transitórias."""
+        last_error: Exception | None = None
+        for attempt in range(1, PROVIDER_ATTEMPTS + 1):
+            try:
+                return self._provider.complete(
+                    system=self._system_prompt(),
+                    messages=messages,
+                    tools=self._tools.specs,
+                )
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Falha no provedor (tentativa %d/%d): %s", attempt, PROVIDER_ATTEMPTS, exc
+                )
+        assert last_error is not None
+        raise last_error

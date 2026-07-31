@@ -37,15 +37,24 @@ TOOL_SPECS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "termo": {"type": "string", "description": "Texto livre, ex.: 'violão nylon'"},
-                "categoria": {"type": "string", "description": "Nome da categoria, ex.: 'Violões'"},
-                "preco_maximo": {"type": "number"},
-                "preco_minimo": {"type": "number"},
+                "termo": {
+                    "type": ["string", "null"],
+                    "description": "Texto livre, ex.: 'violão nylon'",
+                },
+                "categoria": {
+                    "type": ["string", "null"],
+                    "description": "Nome da categoria, ex.: 'Violões'",
+                },
+                "preco_maximo": {"type": ["number", "null"]},
+                "preco_minimo": {"type": ["number", "null"]},
                 "apenas_disponiveis": {
-                    "type": "boolean",
+                    "type": ["boolean", "null"],
                     "description": "true para listar somente produtos ativos com estoque",
                 },
-                "limite": {"type": "integer", "description": "Máximo de resultados (padrão 10)"},
+                "limite": {
+                    "type": ["integer", "null"],
+                    "description": "Máximo de resultados (padrão 10)",
+                },
             },
         },
     },
@@ -58,8 +67,8 @@ TOOL_SPECS: list[dict[str, Any]] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "produto_id": {"type": "integer"},
-                "nome": {"type": "string"},
+                "produto_id": {"type": ["integer", "null"]},
+                "nome": {"type": ["string", "null"]},
             },
         },
     },
@@ -84,7 +93,7 @@ TOOL_SPECS: list[dict[str, Any]] = [
         ),
         "input_schema": {
             "type": "object",
-            "properties": {"produto_id": {"type": "integer"}},
+            "properties": {"produto_id": {"type": ["integer", "null"]}},
         },
     },
     {
@@ -220,8 +229,8 @@ class AgentTools:
                     category=args.get("categoria"),
                     max_price=args.get("preco_maximo"),
                     min_price=args.get("preco_minimo"),
-                    in_stock_only=bool(args.get("apenas_disponiveis", False)),
-                    limit=int(args.get("limite", 10)),
+                    in_stock_only=bool(args.get("apenas_disponiveis") or False),
+                    limit=int(args.get("limite") or 10),
                 )
                 return [_product_payload(p) for p in products]
             case "detalhar_produto":

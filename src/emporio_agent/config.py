@@ -17,7 +17,9 @@ PROVIDERS = ("anthropic", "groq", "ollama")
 
 DEFAULT_MODELS = {
     "anthropic": "claude-haiku-4-5",
-    "groq": "llama-3.3-70b-versatile",
+    # gpt-oss-120b: melhor function calling entre os modelos da camada gratuita
+    # da Groq (o llama-3.3-70b gera sintaxe de tool call malformada com frequência).
+    "groq": "openai/gpt-oss-120b",
     "ollama": "qwen2.5:14b",
 }
 

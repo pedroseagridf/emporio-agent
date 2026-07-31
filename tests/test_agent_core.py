@@ -111,8 +111,18 @@ def test_limite_de_rodadas_devolve_fallback(tools: AgentTools) -> None:
     assert "atendente" in answer  # fallback oferece encaminhar para humano
 
 
-def test_erro_do_provedor_devolve_mensagem_amigavel(tools: AgentTools) -> None:
-    agent, _ = _agent(tools, RuntimeError("api fora do ar"))
+def test_falha_transitoria_recupera_com_retry(tools: AgentTools) -> None:
+    """Erro estocástico do provedor (ex.: tool_use_failed na Groq) → nova tentativa."""
+    agent, provider = _agent(
+        tools, RuntimeError("tool_use_failed"), LLMReply(text="Deu certo na segunda!")
+    )
+    assert agent.send("oi") == "Deu certo na segunda!"
+    assert len(provider.requests) == 2
+
+
+def test_erro_persistente_devolve_mensagem_amigavel(tools: AgentTools) -> None:
+    falhas = [RuntimeError("api fora do ar")] * 3  # PROVIDER_ATTEMPTS
+    agent, _ = _agent(tools, *falhas)
     answer = agent.send("oi")
     assert "atendente" in answer
     # A conversa não fica poluída com a falha: só a mensagem do usuário permanece.
