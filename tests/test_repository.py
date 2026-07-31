@@ -3,7 +3,11 @@ de dados (docs/data_notes.md)."""
 
 import pytest
 
-from emporio_agent.db.repository import IdentityVerificationError, Repository
+from emporio_agent.db.repository import (
+    ORDER_LOOKUP_FAILED,
+    IdentityVerificationError,
+    Repository,
+)
 
 # ------------------------------------------------------------------- produtos
 
@@ -46,6 +50,19 @@ def test_get_product_por_nome_takamine_gd20(repo: Repository) -> None:
     assert p is not None
     assert p.product_id == 95
     assert p.price_brl == 2199
+
+
+def test_curinga_no_termo_nao_vira_dump_do_catalogo(repo: Repository) -> None:
+    """Achado #9: '%' sem escape casava com tudo (65 produtos). Com escape, casa
+    apenas o caractere literal — só o produto 140 tem '%' na descrição ("100% Birch")."""
+    assert [p.product_id for p in repo.search_products(query="%")] == [140]
+    assert repo.search_products(query="_") == []
+
+
+def test_limite_e_travado_entre_1_e_50(repo: Repository) -> None:
+    """Achado #11: LIMIT negativo no SQLite significa 'sem limite'."""
+    assert len(repo.search_products(limit=-1)) == 1
+    assert len(repo.search_products(limit=1000)) == 50
 
 
 def test_busca_tolerante_a_acentos(repo: Repository) -> None:
@@ -106,8 +123,19 @@ def test_pedido_recusa_nome_de_outra_pessoa(repo: Repository) -> None:
         repo.get_order_status(1, "Lucas Mendes da Silva")
 
 
-def test_pedido_inexistente_retorna_none(repo: Repository) -> None:
-    assert repo.get_order_status(999, "Pedro Henrique Oliveira") is None
+def test_pedido_recusa_particula_mais_sobrenome(repo: Repository) -> None:
+    """Achado #1 da revisão: 'da Silva' não conta como nome + sobrenome."""
+    with pytest.raises(IdentityVerificationError):
+        repo.get_order_status(4, "da Silva")  # pedido de Lucas Mendes da Silva
+
+
+def test_pedido_inexistente_e_nome_errado_dao_a_mesma_mensagem(repo: Repository) -> None:
+    """Achado #3 da revisão: mensagens distintas permitiriam enumerar pedidos."""
+    with pytest.raises(IdentityVerificationError) as inexistente:
+        repo.get_order_status(999, "Pedro Henrique Oliveira")
+    with pytest.raises(IdentityVerificationError) as nome_errado:
+        repo.get_order_status(1, "Lucas Mendes da Silva")
+    assert str(inexistente.value) == str(nome_errado.value) == ORDER_LOOKUP_FAILED
 
 
 def test_busca_de_pedidos_exige_contato(repo: Repository) -> None:
@@ -119,6 +147,12 @@ def test_busca_de_pedidos_exige_contato(repo: Repository) -> None:
 
 def test_busca_de_pedidos_por_nome_e_telefone(repo: Repository) -> None:
     orders = repo.find_orders_by_customer("Bruno Carvalho Martins", "(67) 98543-2109")
+    assert [o.order_id for o in orders] == [10]
+
+
+def test_telefone_com_ddi_tambem_localiza(repo: Repository) -> None:
+    """Achado #10: formato comum de WhatsApp inclui o +55 na frente."""
+    orders = repo.find_orders_by_customer("Bruno Carvalho Martins", "+55 (67) 98543-2109")
     assert [o.order_id for o in orders] == [10]
 
 

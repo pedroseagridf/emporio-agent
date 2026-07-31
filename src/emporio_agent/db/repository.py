@@ -26,6 +26,19 @@ class IdentityVerificationError(Exception):
     """Verificação de identidade insuficiente ou divergente para consultar um pedido."""
 
 
+#: Mensagem única para pedido inexistente OU nome divergente: respostas distintas
+#: permitiriam enumerar quais números de pedido existem (achado #3 da revisão).
+ORDER_LOOKUP_FAILED = (
+    "Não localizei um pedido com esse número e esse titular. Confira o número do"
+    " pedido e o nome completo usado na compra (ou peça nome + telefone/e-mail"
+    " cadastrados para buscar os pedidos do cliente)."
+)
+
+#: Partículas que não contam como sobrenome na verificação de identidade
+#: (achado #1 da revisão: "da Silva" não pode valer por "nome + sobrenome").
+_PARTICULAS = {"da", "de", "do", "das", "dos", "e"}
+
+
 @dataclass(frozen=True)
 class Product:
     product_id: int
@@ -91,11 +104,13 @@ def _row_to_product(row: sqlite3.Row) -> Product:
 def _name_tokens_match(informed: str, registered: str) -> bool:
     """Nome informado confere se todos os seus termos constam do nome cadastrado.
 
-    Exige ao menos 2 termos (nome + sobrenome) para evitar liberar dados com um
-    primeiro nome apenas — decisão AS-2 (LGPD + nomes quase duplicados na base).
+    Exige ao menos 2 termos significativos (nome + sobrenome, descontando
+    partículas como "da"/"de") para evitar liberar dados com um primeiro nome
+    apenas — decisão AS-2 (LGPD + nomes quase duplicados na base).
     """
     informed_tokens = set(normalize(informed).split())
-    return len(informed_tokens) >= 2 and informed_tokens <= set(normalize(registered).split())
+    significant = informed_tokens - _PARTICULAS
+    return len(significant) >= 2 and informed_tokens <= set(normalize(registered).split())
 
 
 class Repository:
@@ -133,8 +148,10 @@ class Repository:
         sql = [self._PRODUCT_SELECT, "WHERE 1=1"]
         params: list[object] = []
         for term in normalize(query or "").split():
-            sql.append("AND p.search_text LIKE ?")
-            params.append(f"%{term}%")
+            # Escape de curingas: sem isso, buscar "%" devolveria o catálogo inteiro.
+            escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            sql.append("AND p.search_text LIKE ? ESCAPE '\\'")
+            params.append(f"%{escaped}%")
         if category:
             # Resolvido em Python: LOWER() do SQLite não normaliza acentos ('Violões').
             cat_norm = normalize(category)
@@ -156,7 +173,7 @@ class Repository:
         if in_stock_only:
             sql.append("AND p.status = 'active' AND p.stock_quantity > 0")
         sql.append("ORDER BY p.price_brl LIMIT ?")
-        params.append(limit)
+        params.append(max(1, min(limit, 50)))  # LIMIT negativo no SQLite = sem limite
         rows = self._conn.execute(" ".join(sql), params).fetchall()
         return [_row_to_product(r) for r in rows]
 
@@ -251,19 +268,18 @@ class Repository:
         " JOIN customers c ON c.customer_id = o.customer_id"
     )
 
-    def get_order_status(self, order_id: int, customer_name: str) -> Order | None:
+    def get_order_status(self, order_id: int, customer_name: str) -> Order:
         """Consulta um pedido pelo número, verificando que o nome informado
-        (nome + sobrenome) confere com o titular. Retorna None se o pedido não existe."""
+        (nome + sobrenome) confere com o titular.
+
+        Pedido inexistente e nome divergente levantam o MESMO erro com a MESMA
+        mensagem (``ORDER_LOOKUP_FAILED``) para não permitir enumeração de pedidos.
+        """
         row = self._conn.execute(
             f"{self._ORDER_SELECT} WHERE o.order_id = ?", (order_id,)
         ).fetchone()
-        if row is None:
-            return None
-        if not _name_tokens_match(customer_name, row["customer_name"]):
-            raise IdentityVerificationError(
-                "O nome informado não confere com o titular do pedido. Peça o nome completo"
-                " usado na compra (ou nome + telefone/e-mail cadastrados)."
-            )
+        if row is None or not _name_tokens_match(customer_name, row["customer_name"]):
+            raise IdentityVerificationError(ORDER_LOOKUP_FAILED)
         return self._load_order(row)
 
     def find_orders_by_customer(self, name: str, contact: str) -> list[Order]:
@@ -279,8 +295,9 @@ class Repository:
                 "SELECT * FROM customers WHERE LOWER(email) = ?", (contact.casefold(),)
             ).fetchall()
         elif len(digits) >= 8:
+            # Últimos 11 dígitos: tolera DDI na frente ("+55 (67) 9..." — padrão WhatsApp).
             rows = self._conn.execute(
-                "SELECT * FROM customers WHERE phone_digits LIKE ?", (f"%{digits}",)
+                "SELECT * FROM customers WHERE phone_digits LIKE ?", (f"%{digits[-11:]}",)
             ).fetchall()
         else:
             raise IdentityVerificationError(
