@@ -34,8 +34,18 @@ Resumo da abordagem planejada:
 
 ## Tratamento de dados
 
-*(será preenchido na fase de dados — os achados da auditoria dos CSVs estão em
-`docs/planning/01_technical_case_analysis.md`, seção 4)*
+Os 6 CSVs são carregados em uma base **SQLite** (`python -m emporio_agent.db.build_db`),
+consultada apenas por funções tipadas com SQL parametrizado
+(`src/emporio_agent/db/repository.py`). Princípio adotado: **os dados originais não
+são alterados na ingestão** — inconsistências são resolvidas na camada de consulta ou
+de prompt, onde a decisão fica explícita e testável.
+
+A auditoria encontrou 11 pontos de atenção nos dados, entre eles: produto ativo com
+estoque zero, produtos descontinuados, 21 de 25 promoções expiradas (que o agente não
+pode prometer), divergências entre nome e descrição de produtos, clientes com nomes
+quase idênticos (o que motivou a verificação de identidade em consultas de pedido) e
+categorias sem nenhum produto. A tabela completa achado → decisão → teste está em
+[`docs/data_notes.md`](docs/data_notes.md).
 
 ## Suposições
 
