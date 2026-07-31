@@ -3,6 +3,17 @@
 from __future__ import annotations
 
 import unicodedata
+from datetime import datetime
+
+_DIAS_SEMANA = (
+    "segunda-feira",
+    "terça-feira",
+    "quarta-feira",
+    "quinta-feira",
+    "sexta-feira",
+    "sábado",
+    "domingo",
+)
 
 _STATUS_PEDIDO = {
     "pending": "aguardando confirmação do pagamento",
@@ -34,6 +45,11 @@ def format_brl(value: float) -> str:
     """Formata um valor em reais no padrão brasileiro: 1234.5 -> 'R$ 1.234,50'."""
     formatted = f"{value:,.2f}".replace(",", "\x00").replace(".", ",").replace("\x00", ".")
     return f"R$ {formatted}"
+
+
+def format_datetime_ptbr(moment: datetime) -> str:
+    """'quarta-feira, 30/07/2026, 14:32' — independente do locale do sistema."""
+    return f"{_DIAS_SEMANA[moment.weekday()]}, {moment:%d/%m/%Y}, {moment:%H:%M}"
 
 
 def describe_order_status(status: str) -> str:
