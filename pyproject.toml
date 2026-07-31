@@ -10,6 +10,7 @@ dependencies = [
     "anthropic>=0.49",
     "openai>=1.65",
     "python-dotenv>=1.0",
+    "rich>=13.7",
 ]
 
 [dependency-groups]
@@ -19,7 +20,7 @@ dev = [
 ]
 
 [project.scripts]
-emporio-agent = "emporio_agent.__main__:main"
+emporio-agent = "emporio_agent.cli:main"
 
 [build-system]
 requires = ["hatchling"]

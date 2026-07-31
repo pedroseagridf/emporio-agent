@@ -1,23 +1,6 @@
-"""Ponto de entrada do projeto.
+"""Ponto de entrada: ``python -m emporio_agent`` abre o chat no terminal."""
 
-Por enquanto exibe apenas o banner da loja; a interface de chat (CLI) será
-conectada aqui na fase de interface.
-"""
-
-from emporio_agent import __version__
-
-BANNER = r"""
-=====================================================
-   EMPORIO DA MUSICA - Atendimento Virtual  (v{v})
-   "Sua musica comeca aqui."
-=====================================================
-""".strip("\n")
-
-
-def main() -> None:
-    print(BANNER.format(v=__version__))
-    print("\nInterface de chat ainda nao conectada (em desenvolvimento).")
-
+from emporio_agent.cli import main
 
 if __name__ == "__main__":
     main()
